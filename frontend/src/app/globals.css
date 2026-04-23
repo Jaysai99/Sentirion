@@ -60,6 +60,7 @@ select {
 }
 
 .glass-panel {
+  position: relative;
   backdrop-filter: blur(20px) saturate(1.2);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -113,10 +114,23 @@ select {
   }
 }
 
-/* Truncate utility */
+/* Truncate utilities */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
 .line-clamp-3 {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   overflow: hidden;
+}
+
+/* Clip recharts SVG overflow inside chart wrappers */
+.chart-clip {
+  overflow: hidden;
+  border-radius: inherit;
 }

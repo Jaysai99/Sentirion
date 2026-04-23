@@ -9,18 +9,9 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
-  ReferenceLine,
 } from "recharts";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function fmt(value, decimals = 2) {
-  if (value == null) return "--";
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(value);
-}
 
 function fmtCompact(value) {
   if (value == null) return "--";
@@ -104,46 +95,48 @@ function SparkLine({ history, stroke = "#b8f36b", height = 40, width = 80 }) {
 function FullLineChart({ history, stroke = "#b8f36b", name = "" }) {
   if (!history?.length) return <div className="h-48 rounded-[18px] bg-white/[0.04]" />;
   return (
-    <ResponsiveContainer width="100%" height={192}>
-      <LineChart data={history} margin={{ top: 4, right: 8, left: -24, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-        <XAxis
-          dataKey="date"
-          tick={{ fill: "#70827a", fontSize: 9, fontFamily: "monospace" }}
-          tickFormatter={(v) => String(v || "").slice(5)}
-          interval="preserveStartEnd"
-          axisLine={false}
-          tickLine={false}
-        />
-        <YAxis
-          tick={{ fill: "#70827a", fontSize: 9, fontFamily: "monospace" }}
-          domain={["auto", "auto"]}
-          axisLine={false}
-          tickLine={false}
-          width={52}
-          tickFormatter={(v) => fmtCompact(v)}
-        />
-        <Tooltip
-          contentStyle={{
-            background: "#0b1714",
-            border: "1px solid rgba(255,255,255,0.12)",
-            borderRadius: "12px",
-            padding: "8px 12px",
-          }}
-          labelStyle={{ color: "#9aaba3", fontSize: 11 }}
-          itemStyle={{ color: stroke, fontFamily: "monospace" }}
-          formatter={(v) => [typeof v === "number" ? v.toLocaleString(undefined, { maximumFractionDigits: 4 }) : v, name]}
-        />
-        <Line
-          type="monotone"
-          dataKey="close"
-          stroke={stroke}
-          strokeWidth={2.5}
-          dot={false}
-          activeDot={{ r: 5, fill: stroke, stroke: "#0b1714", strokeWidth: 2 }}
-        />
-      </LineChart>
-    </ResponsiveContainer>
+    <div className="chart-clip">
+      <ResponsiveContainer width="100%" height={192}>
+        <LineChart data={history} margin={{ top: 4, right: 12, left: 4, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+          <XAxis
+            dataKey="date"
+            tick={{ fill: "#70827a", fontSize: 9, fontFamily: "monospace" }}
+            tickFormatter={(v) => String(v || "").slice(5)}
+            interval="preserveStartEnd"
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            tick={{ fill: "#70827a", fontSize: 9, fontFamily: "monospace" }}
+            domain={["auto", "auto"]}
+            axisLine={false}
+            tickLine={false}
+            width={48}
+            tickFormatter={(v) => fmtCompact(v)}
+          />
+          <Tooltip
+            contentStyle={{
+              background: "#0b1714",
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: "12px",
+              padding: "8px 12px",
+            }}
+            labelStyle={{ color: "#9aaba3", fontSize: 11 }}
+            itemStyle={{ color: stroke, fontFamily: "monospace" }}
+            formatter={(v) => [typeof v === "number" ? v.toLocaleString(undefined, { maximumFractionDigits: 4 }) : v, name]}
+          />
+          <Line
+            type="monotone"
+            dataKey="close"
+            stroke={stroke}
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 4, fill: stroke, stroke: "#0b1714", strokeWidth: 2 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
@@ -335,7 +328,7 @@ function FICCView({ ficc, loading }) {
         </div>
       )}
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid gap-6 xl:grid-cols-2">
         {/* Forex */}
         <div className="glass-panel rounded-[28px] p-5">
           <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.24em] text-[#76867f]">Forex — G10 + EM</div>
@@ -452,7 +445,7 @@ function FICCView({ ficc, loading }) {
       {/* Commodities */}
       <div className="glass-panel rounded-[28px] p-5">
         <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.24em] text-[#76867f]">Commodities</div>
-        <div className="grid gap-5 xl:grid-cols-3">
+        <div className="grid gap-6 xl:grid-cols-3">
           {Object.entries(commodityRows).map(([group, items]) => (
             <div key={group}>
               <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-[#5a6b63]">{group}</div>
@@ -614,14 +607,14 @@ export default function MarketsPage() {
   }, []);
 
   return (
-    <main className="sentirion-grid min-h-screen px-4 py-5 text-white sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-[1600px] flex-col gap-5">
+    <main className="sentirion-grid min-h-screen px-4 py-6 text-white sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
         {/* Header */}
-        <header className="glass-panel dashboard-fade rounded-[30px] px-6 py-5">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <header className="glass-panel dashboard-fade rounded-[30px] px-6 py-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div>
-              <div className="font-mono text-[11px] uppercase tracking-[0.28em] text-[#76867f]">
-                Sentirion by Dekalb · Global Markets Terminal
+              <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-[#5d7069]">
+                Sentirion by Dekalb Capital Management LLC · Global Markets Terminal
               </div>
               <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-[#f4f0e8]">
                 {activeTab}
@@ -634,19 +627,19 @@ export default function MarketsPage() {
             </div>
 
             {/* Quick stats */}
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-2">
               {(overview?.indices || []).slice(0, 4).map((idx) => (
-                <div key={idx.symbol} className="rounded-[18px] border border-white/8 bg-white/[0.04] px-4 py-3 text-center">
-                  <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#70827a]">{idx.name}</div>
-                  <div className="mt-1 font-mono text-base font-semibold text-[#f4f0e8]">{fmtCompact(idx.price)}</div>
-                  <div className={`font-mono text-xs font-semibold ${pctColor(idx.change_pct)}`}>{fmtPct(idx.change_pct)}</div>
+                <div key={idx.symbol} className="rounded-[16px] border border-white/8 bg-white/[0.04] px-4 py-3 text-center min-w-[80px]">
+                  <div className="font-mono text-[9px] uppercase tracking-[0.22em] text-[#5d7069]">{idx.name}</div>
+                  <div className="mt-1.5 font-mono text-sm font-semibold text-[#f4f0e8]">{fmtCompact(idx.price)}</div>
+                  <div className={`mt-0.5 font-mono text-xs font-semibold ${pctColor(idx.change_pct)}`}>{fmtPct(idx.change_pct)}</div>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Tabs */}
-          <div className="mt-4 flex gap-2">
+          <div className="mt-5 flex gap-2 border-t border-white/[0.06] pt-4">
             {TABS.map((tab) => (
               <button
                 key={tab}

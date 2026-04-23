@@ -232,19 +232,19 @@ export default function SentimentPage() {
       : (result?.documents || []).filter((document) => document.source === activeSource);
 
   return (
-    <main className="sentirion-grid min-h-screen px-4 py-5 text-white sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-[1600px] flex-col gap-5">
-        <header className="glass-panel dashboard-fade rounded-[30px] px-6 py-5">
+    <main className="sentirion-grid min-h-screen px-4 py-6 text-white sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
+        <header className="glass-panel dashboard-fade rounded-[30px] px-6 py-6">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex items-center gap-4">
               <div>
-                <div className="flex items-center gap-3">
-                  <div className="font-mono text-[11px] uppercase tracking-[0.28em] text-[#76867f]">
-                    Sentirion by Dekalb
+                <div className="flex items-center gap-2">
+                  <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-[#5d7069]">
+                    Sentirion by Dekalb Capital Management LLC
                   </div>
-                  <div className="h-1 w-1 rounded-full bg-[#b8f36b]" />
-                  <div className="font-mono text-[11px] uppercase tracking-[0.28em] text-[#76867f]">
-                    Dekalb Capital Management LLC Product Terminal
+                  <div className="h-1 w-1 rounded-full bg-[#b8f36b]/60" />
+                  <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-[#5d7069]">
+                    Sentiment Terminal
                   </div>
                 </div>
                 {result?.ticker || result?.stock_data ? (
@@ -298,7 +298,7 @@ export default function SentimentPage() {
           </div>
         </header>
 
-        <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+        <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <Panel title="Query Console" eyebrow="Input">
             <form className="flex flex-col gap-3 xl:flex-row" onSubmit={handleSubmit}>
               <input
@@ -421,7 +421,7 @@ export default function SentimentPage() {
           </section>
         )}
 
-        <section className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+        <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <Panel title="Narrative Engine" eyebrow="Priority 2">
             <div className="space-y-4">
               <div className="rounded-[22px] border border-white/8 bg-[#0b1714] p-5">
@@ -469,7 +469,7 @@ export default function SentimentPage() {
           </Panel>
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+        <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <Panel title="Momentum & Trend" eyebrow="Priority 4">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <MetricCard
@@ -582,7 +582,7 @@ export default function SentimentPage() {
           </Panel>
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-2">
+        <section className="grid gap-6 xl:grid-cols-2">
           <Panel title="News Feed" eyebrow="Financial News">
             <NewsPanel items={result?.news_stream?.items || []} avgSentiment={result?.news_stream?.avg_sentiment} count={result?.news_stream?.count} />
           </Panel>
@@ -592,7 +592,7 @@ export default function SentimentPage() {
         </section>
 
         {(result?.analyst_data || result?.earnings_calendar) && (
-          <section className="grid gap-5 xl:grid-cols-2">
+          <section className="grid gap-6 xl:grid-cols-2">
             {result?.analyst_data && (
               <Panel title="Analyst Coverage" eyebrow="Street View">
                 <AnalystPanel data={result.analyst_data} currentPrice={result?.stock_data?.price} />
@@ -606,7 +606,7 @@ export default function SentimentPage() {
           </section>
         )}
 
-        <section className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+        <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <Panel title="Global Market Overview" eyebrow="Market Context">
             {overviewError ? <ErrorStrip message={overviewError} /> : null}
             {overviewLoading ? (
@@ -653,7 +653,7 @@ export default function SentimentPage() {
                   <WatchlistTable entries={overview?.top_traded_tickers || []} />
                 </div>
 
-                <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
+                <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
                   <div className="rounded-[22px] border border-white/8 bg-[#0b1714] p-4">
                     <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.24em] text-[#76867f]">
                       Sentiment Distribution
@@ -702,7 +702,7 @@ export default function SentimentPage() {
           </Panel>
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+        <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
           <Panel title="Filings Intelligence" eyebrow="High-Quality Source">
             <div className="space-y-4">
               {(result?.filings_intelligence?.filings || []).length === 0 ? (
@@ -852,10 +852,10 @@ export default function SentimentPage() {
 
 function Panel({ eyebrow, title, children }) {
   return (
-    <section className="glass-panel dashboard-fade rounded-[28px] p-5 sm:p-6">
-      <div className="mb-4">
-        <div className="font-mono text-[11px] uppercase tracking-[0.24em] text-[#72857c]">{eyebrow}</div>
-        <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[#f4f0e8]">{title}</h2>
+    <section className="glass-panel dashboard-fade rounded-[28px] p-5 sm:p-7">
+      <div className="mb-5 border-b border-white/[0.06] pb-4">
+        <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-[#5d7069]">{eyebrow}</div>
+        <h2 className="mt-1.5 text-xl font-semibold tracking-[-0.03em] text-[#f4f0e8]">{title}</h2>
       </div>
       {children}
     </section>
@@ -937,89 +937,93 @@ function LineChart({ points, valueKey, labelKey, stroke }) {
   if (!values.length) return <div className="h-48 rounded-[18px] bg-white/[0.04]" />;
 
   return (
-    <ResponsiveContainer width="100%" height={192}>
-      <RLineChart data={points} margin={{ top: 4, right: 8, left: -24, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-        <XAxis
-          dataKey={labelKey}
-          tick={{ fill: "#70827a", fontSize: 10, fontFamily: "var(--font-ibm-plex-mono)" }}
-          tickFormatter={(v) => String(v || "").slice(0, 10)}
-          interval="preserveStartEnd"
-          axisLine={false}
-          tickLine={false}
-        />
-        <YAxis
-          tick={{ fill: "#70827a", fontSize: 10, fontFamily: "var(--font-ibm-plex-mono)" }}
-          domain={["auto", "auto"]}
-          axisLine={false}
-          tickLine={false}
-          tickFormatter={(v) => (typeof v === "number" ? v.toFixed(2) : v)}
-          width={48}
-        />
-        <Tooltip
-          contentStyle={{
-            background: "#0b1714",
-            border: "1px solid rgba(255,255,255,0.12)",
-            borderRadius: "12px",
-            padding: "8px 12px",
-          }}
-          labelStyle={{ color: "#9aaba3", fontSize: 11, fontFamily: "var(--font-ibm-plex-mono)" }}
-          itemStyle={{ color: stroke, fontFamily: "var(--font-ibm-plex-mono)" }}
-          formatter={(v) => [typeof v === "number" ? v.toFixed(4) : v]}
-        />
-        {valueKey === "score" && (
-          <ReferenceLine y={0} stroke="rgba(255,255,255,0.15)" strokeDasharray="4 4" />
-        )}
-        <Line
-          type="monotone"
-          dataKey={valueKey}
-          stroke={stroke}
-          strokeWidth={2.5}
-          dot={false}
-          activeDot={{ r: 5, fill: stroke, stroke: "#0b1714", strokeWidth: 2 }}
-        />
-      </RLineChart>
-    </ResponsiveContainer>
+    <div className="chart-clip">
+      <ResponsiveContainer width="100%" height={192}>
+        <RLineChart data={points} margin={{ top: 4, right: 12, left: 4, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+          <XAxis
+            dataKey={labelKey}
+            tick={{ fill: "#70827a", fontSize: 10, fontFamily: "var(--font-ibm-plex-mono)" }}
+            tickFormatter={(v) => String(v || "").slice(0, 10)}
+            interval="preserveStartEnd"
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            tick={{ fill: "#70827a", fontSize: 10, fontFamily: "var(--font-ibm-plex-mono)" }}
+            domain={["auto", "auto"]}
+            axisLine={false}
+            tickLine={false}
+            tickFormatter={(v) => (typeof v === "number" ? v.toFixed(2) : v)}
+            width={44}
+          />
+          <Tooltip
+            contentStyle={{
+              background: "#0b1714",
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: "12px",
+              padding: "8px 12px",
+            }}
+            labelStyle={{ color: "#9aaba3", fontSize: 11, fontFamily: "var(--font-ibm-plex-mono)" }}
+            itemStyle={{ color: stroke, fontFamily: "var(--font-ibm-plex-mono)" }}
+            formatter={(v) => [typeof v === "number" ? v.toFixed(4) : v]}
+          />
+          {valueKey === "score" && (
+            <ReferenceLine y={0} stroke="rgba(255,255,255,0.15)" strokeDasharray="4 4" />
+          )}
+          <Line
+            type="monotone"
+            dataKey={valueKey}
+            stroke={stroke}
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 4, fill: stroke, stroke: "#0b1714", strokeWidth: 2 }}
+          />
+        </RLineChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
 function Histogram({ buckets }) {
   if (!buckets?.length) return null;
   return (
-    <ResponsiveContainer width="100%" height={140}>
-      <RBarChart data={buckets} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-        <XAxis
-          dataKey="label"
-          tick={{ fill: "#70827a", fontSize: 9, fontFamily: "var(--font-ibm-plex-mono)" }}
-          axisLine={false}
-          tickLine={false}
-        />
-        <YAxis
-          tick={{ fill: "#70827a", fontSize: 10 }}
-          axisLine={false}
-          tickLine={false}
-          width={28}
-        />
-        <Tooltip
-          contentStyle={{
-            background: "#0b1714",
-            border: "1px solid rgba(255,255,255,0.12)",
-            borderRadius: "12px",
-            padding: "8px 12px",
-          }}
-          cursor={{ fill: "rgba(255,255,255,0.04)" }}
-          labelStyle={{ color: "#9aaba3", fontSize: 11 }}
-        />
-        <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-          {buckets.map((bucket, i) => {
-            const mid = i / Math.max(buckets.length - 1, 1);
-            const fill = mid < 0.33 ? "#ff7d6b" : mid > 0.66 ? "#b8f36b" : "#ffbf69";
-            return <Cell key={bucket.label} fill={fill} fillOpacity={0.8} />;
-          })}
-        </Bar>
-      </RBarChart>
-    </ResponsiveContainer>
+    <div className="chart-clip">
+      <ResponsiveContainer width="100%" height={140}>
+        <RBarChart data={buckets} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+          <XAxis
+            dataKey="label"
+            tick={{ fill: "#70827a", fontSize: 9, fontFamily: "var(--font-ibm-plex-mono)" }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            tick={{ fill: "#70827a", fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+            width={24}
+          />
+          <Tooltip
+            contentStyle={{
+              background: "#0b1714",
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: "12px",
+              padding: "8px 12px",
+            }}
+            cursor={{ fill: "rgba(255,255,255,0.04)" }}
+            labelStyle={{ color: "#9aaba3", fontSize: 11 }}
+          />
+          <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+            {buckets.map((bucket, i) => {
+              const mid = i / Math.max(buckets.length - 1, 1);
+              const fill = mid < 0.33 ? "#ff7d6b" : mid > 0.66 ? "#b8f36b" : "#ffbf69";
+              return <Cell key={bucket.label} fill={fill} fillOpacity={0.85} />;
+            })}
+          </Bar>
+        </RBarChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
@@ -1501,38 +1505,40 @@ function BarChart({ series, color }) {
   if (!series?.length) return null;
   const data = series.map((s) => ({ ...s, label: s.period_end?.slice(0, 7) ?? "" }));
   return (
-    <ResponsiveContainer width="100%" height={120}>
-      <RBarChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-        <XAxis
-          dataKey="label"
-          tick={{ fill: "#70827a", fontSize: 9, fontFamily: "var(--font-ibm-plex-mono)" }}
-          axisLine={false}
-          tickLine={false}
-        />
-        <YAxis
-          tick={{ fill: "#70827a", fontSize: 9 }}
-          axisLine={false}
-          tickLine={false}
-          width={44}
-          tickFormatter={(v) => formatCompactNumber(v)}
-        />
-        <Tooltip
-          contentStyle={{
-            background: "#0b1714",
-            border: "1px solid rgba(255,255,255,0.12)",
-            borderRadius: "12px",
-            padding: "8px 12px",
-          }}
-          cursor={{ fill: "rgba(255,255,255,0.04)" }}
-          formatter={(v) => [formatCompactNumber(v)]}
-        />
-        <Bar dataKey="value" radius={[3, 3, 0, 0]}>
-          {data.map((point, i) => (
-            <Cell key={i} fill={point.value < 0 ? "#ff7d6b" : color} fillOpacity={0.82} />
-          ))}
-        </Bar>
-      </RBarChart>
-    </ResponsiveContainer>
+    <div className="chart-clip">
+      <ResponsiveContainer width="100%" height={120}>
+        <RBarChart data={data} margin={{ top: 4, right: 8, left: 4, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+          <XAxis
+            dataKey="label"
+            tick={{ fill: "#70827a", fontSize: 9, fontFamily: "var(--font-ibm-plex-mono)" }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            tick={{ fill: "#70827a", fontSize: 9 }}
+            axisLine={false}
+            tickLine={false}
+            width={40}
+            tickFormatter={(v) => formatCompactNumber(v)}
+          />
+          <Tooltip
+            contentStyle={{
+              background: "#0b1714",
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: "12px",
+              padding: "8px 12px",
+            }}
+            cursor={{ fill: "rgba(255,255,255,0.04)" }}
+            formatter={(v) => [formatCompactNumber(v)]}
+          />
+          <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+            {data.map((point, i) => (
+              <Cell key={i} fill={point.value < 0 ? "#ff7d6b" : color} fillOpacity={0.85} />
+            ))}
+          </Bar>
+        </RBarChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
