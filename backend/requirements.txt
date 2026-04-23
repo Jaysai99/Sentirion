@@ -1,3 +1,4 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 beautifulsoup4
 fastapi
 feedparser
@@ -6,7 +7,7 @@ ntscraper
 pandas
 requests
 sec-edgar-downloader
-torch
+torch==2.5.1+cpu
 transformers
 tweepy
 uvicorn
