@@ -7,7 +7,7 @@ ntscraper
 pandas
 requests
 sec-edgar-downloader
-torch==2.5.1+cpu
+torch==2.6.0+cpu
 transformers
 tweepy
 uvicorn
