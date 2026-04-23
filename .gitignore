@@ -1,0 +1,55 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# ── Node / Next.js ────────────────────────────────────────────────────────────
+node_modules/
+.next/
+out/
+.npm/
+.pnpm-store/
+
+# ── Environment & secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.production
+.env.staging
+.env.*.local
+# Keep examples in version control
+!.env.example
+!.env.local.example
+
+# ── SEC filing downloads (large runtime data — not source code) ───────────────
+backend/sec_data/
+
+# ── OS & editor artifacts ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
+# Orphaned development script (superseded by FastAPI backend)
+backend/import yfinance as yf.py
+*.log

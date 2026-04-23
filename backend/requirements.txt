@@ -1,0 +1,10 @@
+beautifulsoup4
+fastapi
+lxml
+pandas
+requests
+sec-edgar-downloader
+torch
+transformers
+uvicorn
+yfinance
