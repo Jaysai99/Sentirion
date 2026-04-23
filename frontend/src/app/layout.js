@@ -14,8 +14,8 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata = {
-  title: "Sentirion — Market Intelligence Terminal",
-  description: "Institutional sentiment intelligence across Reddit, News, and SEC filings.",
+  title: "Sentirion by Dekalb Capital Management LLC",
+  description: "Institutional market sentiment intelligence platform by Dekalb Capital Management LLC.",
 };
 
 export default function RootLayout({ children }) {
@@ -23,7 +23,7 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body className={`${spaceGrotesk.variable} ${ibmPlexMono.variable} antialiased`}>
         <NavBar />
-        <div className="pt-10">{children}</div>
+        <div className="pt-14">{children}</div>
       </body>
     </html>
   );

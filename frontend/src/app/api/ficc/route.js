@@ -21,7 +21,7 @@ export async function GET() {
     return NextResponse.json(body);
   } catch {
     return NextResponse.json(
-      { detail: `Could not reach Sentirion backend at ${BACKEND_BASE_URL}.` },
+      { detail: `Could not reach the Sentirion backend at ${BACKEND_BASE_URL}.` },
       { status: 502 }
     );
   }

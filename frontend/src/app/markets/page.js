@@ -621,7 +621,7 @@ export default function MarketsPage() {
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <div className="font-mono text-[11px] uppercase tracking-[0.28em] text-[#76867f]">
-                Sentirion · Global Markets Terminal
+                Sentirion by Dekalb · Global Markets Terminal
               </div>
               <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-[#f4f0e8]">
                 {activeTab}

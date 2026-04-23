@@ -240,11 +240,11 @@ export default function SentimentPage() {
               <div>
                 <div className="flex items-center gap-3">
                   <div className="font-mono text-[11px] uppercase tracking-[0.28em] text-[#76867f]">
-                    Sentirion
+                    Sentirion by Dekalb
                   </div>
                   <div className="h-1 w-1 rounded-full bg-[#b8f36b]" />
                   <div className="font-mono text-[11px] uppercase tracking-[0.28em] text-[#76867f]">
-                    Sentiment Intelligence Terminal
+                    Dekalb Capital Management LLC Product Terminal
                   </div>
                 </div>
                 {result?.ticker || result?.stock_data ? (

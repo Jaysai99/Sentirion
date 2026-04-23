@@ -26,7 +26,7 @@ export async function GET(request) {
   } catch {
     return NextResponse.json(
       {
-        detail: `Could not reach Sentirion backend at ${BACKEND_BASE_URL}. Make sure the Python API is running.`,
+        detail: `Could not reach the Sentirion backend at ${BACKEND_BASE_URL}. Make sure the Dekalb Capital Management platform API is running.`,
       },
       { status: 502 }
     );
