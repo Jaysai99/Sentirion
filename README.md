@@ -41,7 +41,6 @@ Sentiment scores are produced by **FinBERT** (a financial-domain BERT model) and
 | Python | 3.10+ | 3.11 recommended |
 | Node.js | 18+ | 20 LTS recommended |
 | npm | 9+ | bundled with Node |
-| Docker + Compose | 24+ | production only |
 
 ---
 
@@ -96,40 +95,40 @@ Open **http://localhost:3000/sentiment**
 
 ---
 
-## Production deployment (Docker)
+## Production deployment
 
-### Start
+Deploy the services separately:
 
-```bash
-# 1. Set backend secrets
-cp backend/.env.example backend/.env
-#    Edit backend/.env — at minimum set SEC_COMPANY_NAME, SEC_CONTACT_EMAIL,
-#    and ALLOWED_ORIGINS to match your frontend domain.
+- `frontend/` as a Next.js app on Vercel
+- `backend/` as a Python service on Railway
 
-# 2. Build images and start containers
-docker compose up --build -d
-```
+### Backend (Railway)
 
-| Service | URL |
-|---------|-----|
-| Frontend | http://your-host:3000 |
-| Backend API | http://your-host:3001 |
-
-SEC filing data is written to a named Docker volume (`sec_data`) and persists across restarts.
-
-### Common commands
+Set these environment variables in Railway:
 
 ```bash
-# Stop
-docker compose down
-
-# Tail logs
-docker compose logs -f backend
-docker compose logs -f frontend
-
-# Rebuild after code changes
-docker compose up --build -d
+HOST=0.0.0.0
+PORT=$PORT
+SEC_COMPANY_NAME=Your Company Name
+SEC_CONTACT_EMAIL=you@example.com
+ALLOWED_ORIGINS=https://your-frontend-domain.vercel.app
 ```
+
+Use this start command for the backend service:
+
+```bash
+uvicorn app:app --host 0.0.0.0 --port $PORT
+```
+
+### Frontend (Vercel)
+
+Set this environment variable in Vercel:
+
+```bash
+SENTIRION_BACKEND_URL=https://your-backend.up.railway.app
+```
+
+The frontend API routes proxy requests server-side to the backend, so the browser only needs the frontend URL.
 
 ---
 
@@ -139,7 +138,7 @@ docker compose up --build -d
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` for Docker / remote access |
+| `HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` for Railway / remote access |
 | `PORT` | `3001` | Listening port |
 | `ALLOWED_ORIGINS` | `http://localhost:3000,...` | Comma-separated CORS origins |
 | `SEC_COMPANY_NAME` | — | Your company name (required by SEC EDGAR) |
@@ -229,7 +228,6 @@ sentirion/
 │   ├── sec_ingestion.py      # SEC EDGAR downloader
 │   ├── text_cleaner.py       # HTML / XML text preprocessing
 │   ├── requirements.txt
-│   ├── Dockerfile
 │   └── .env.example          # Template — copy to .env before running
 │
 ├── frontend/
@@ -239,10 +237,8 @@ sentirion/
 │   │   └── api/              # Next.js server-side proxy routes → backend
 │   ├── scripts/dev.js        # Unified dev launcher (starts both services)
 │   ├── next.config.mjs
-│   ├── Dockerfile
 │   └── .env.local.example    # Template — copy to .env.local before running
 │
-├── docker-compose.yml        # One-command production stack
 ├── .gitignore
 └── README.md
 ```
@@ -251,8 +247,8 @@ sentirion/
 
 ## Team notes
 
-- **SEC filings** are downloaded on first query per ticker and cached in `backend/sec_data/`. This directory is gitignored; in production it is persisted via the `sec_data` Docker volume.
-- **FinBERT cold start** takes ~30 s on first request (model loads into memory). The Docker healthcheck accounts for this with a 60-second start period.
+- **SEC filings** are downloaded on first query per ticker and cached in `backend/sec_data/`. This directory is gitignored; configure a persistent Railway volume if you want the cache to survive backend redeploys.
+- **FinBERT cold start** takes ~30 s on first request (model loads into memory). Plan for a slower first response after the backend restarts.
 - **Signal suppression**: if fewer than 30 total documents or 12 Reddit mentions are found, `score_display` returns `null` to prevent false precision on thin coverage. The raw `score` field is always populated.
 - **Reddit**: uses the public JSON API — no credentials required. Default post limits are conservative to avoid rate limits.
 - **CORS**: set `ALLOWED_ORIGINS` in `backend/.env` to your production frontend URL before deploying.
