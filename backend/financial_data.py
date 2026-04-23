@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import math
 import re
-from datetime import date
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, datetime, timezone
 from typing import Any
 
 import yfinance as yf
@@ -97,6 +98,235 @@ def fetch_stock_snapshot(
         "performance_summary": _build_performance_summary(price_history),
         "revenue_series": revenue_series,
         "income_series": income_series,
+    }
+
+
+def fetch_analyst_data(ticker: str) -> dict[str, Any] | None:
+    """Return analyst price targets, recent rating changes, and recommendation consensus."""
+    if not looks_like_ticker(ticker):
+        return None
+    try:
+        instrument = yf.Ticker(ticker.upper())
+        info       = _safe_get_info(instrument)
+
+        # Price target summary
+        targets_raw = None
+        try:
+            apt = instrument.analyst_price_targets
+            if apt is not None and not getattr(apt, "empty", True):
+                targets_raw = {
+                    "current":  _coerce_number(apt.get("current")),
+                    "mean":     _coerce_number(apt.get("mean")),
+                    "high":     _coerce_number(apt.get("high")),
+                    "low":      _coerce_number(apt.get("low")),
+                    "number_of_analysts": _coerce_number(apt.get("numberOfAnalysts")),
+                }
+        except Exception:
+            pass
+
+        # Recent upgrades / downgrades (last 10)
+        upgrades: list[dict[str, Any]] = []
+        try:
+            ud = instrument.upgrades_downgrades
+            if ud is not None and not getattr(ud, "empty", True):
+                for idx, row in ud.head(10).iterrows():
+                    upgrades.append({
+                        "date":       idx.date().isoformat() if hasattr(idx, "date") else str(idx),
+                        "firm":       row.get("Firm", ""),
+                        "to_grade":   row.get("ToGrade", ""),
+                        "from_grade": row.get("FromGrade", ""),
+                        "action":     row.get("Action", ""),
+                    })
+        except Exception:
+            pass
+
+        # Recommendation from info (e.g. "buy", "hold", "sell")
+        recommendation = info.get("recommendationKey") or info.get("recommendation")
+        num_analysts   = _coerce_number(info.get("numberOfAnalystOpinions"))
+        target_price   = _coerce_number(info.get("targetMeanPrice"))
+        target_high    = _coerce_number(info.get("targetHighPrice"))
+        target_low     = _coerce_number(info.get("targetLowPrice"))
+
+        if targets_raw is None and target_price:
+            targets_raw = {
+                "mean": target_price,
+                "high": target_high,
+                "low":  target_low,
+                "number_of_analysts": num_analysts,
+            }
+
+        return {
+            "recommendation":      recommendation,
+            "num_analysts":        num_analysts,
+            "price_targets":       targets_raw,
+            "recent_upgrades":     upgrades,
+        }
+    except Exception:
+        return None
+
+
+def fetch_earnings_calendar(ticker: str) -> dict[str, Any] | None:
+    """Return next earnings date and EPS/revenue estimates if available."""
+    if not looks_like_ticker(ticker):
+        return None
+    try:
+        instrument = yf.Ticker(ticker.upper())
+        info       = _safe_get_info(instrument)
+
+        next_date = None
+        try:
+            earnings_dates = instrument.earnings_dates
+            if earnings_dates is not None and not getattr(earnings_dates, "empty", True):
+                now = date.today()
+                future_rows = [
+                    (idx, row)
+                    for idx, row in earnings_dates.iterrows()
+                    if hasattr(idx, "date") and idx.date() >= now
+                ]
+                if future_rows:
+                    next_idx, next_row = future_rows[0]
+                    next_date = {
+                        "date":               next_idx.date().isoformat(),
+                        "eps_estimate":       _coerce_number(next_row.get("EPS Estimate")),
+                        "reported_eps":       _coerce_number(next_row.get("Reported EPS")),
+                        "surprise_pct":       _coerce_number(next_row.get("Surprise(%)")),
+                    }
+        except Exception:
+            pass
+
+        return {
+            "next_earnings":           next_date,
+            "eps_trailing_12m":        _coerce_number(info.get("trailingEps")),
+            "eps_forward":             _coerce_number(info.get("forwardEps")),
+            "revenue_per_share":       _coerce_number(info.get("revenuePerShare")),
+            "earnings_growth_yoy":     _coerce_number(info.get("earningsGrowth")),
+            "revenue_growth_yoy":      _coerce_number(info.get("revenueGrowth")),
+            "profit_margins":          _coerce_number(info.get("profitMargins")),
+            "operating_margins":       _coerce_number(info.get("operatingMargins")),
+            "return_on_equity":        _coerce_number(info.get("returnOnEquity")),
+            "return_on_assets":        _coerce_number(info.get("returnOnAssets")),
+            "debt_to_equity":          _coerce_number(info.get("debtToEquity")),
+            "current_ratio":           _coerce_number(info.get("currentRatio")),
+            "free_cashflow":           _coerce_number(info.get("freeCashflow")),
+        }
+    except Exception:
+        return None
+
+
+_FICC_CATEGORY_SYMBOLS: dict[str, list[tuple[str, str]]] = {
+    "equities": [
+        ("^FTSE",  "FTSE 100"),
+        ("^GDAXI", "DAX"),
+        ("^FCHI",  "CAC 40"),
+        ("^N225",  "Nikkei 225"),
+        ("^HSI",   "Hang Seng"),
+        ("^AXJO",  "ASX 200"),
+        ("^BSESN", "Sensex"),
+        ("^BVSP",  "Bovespa"),
+        ("^MXX",   "IPC Mexico"),
+        ("^KS11",  "KOSPI"),
+    ],
+    "forex": [
+        ("EURUSD=X", "EUR/USD"),
+        ("GBPUSD=X", "GBP/USD"),
+        ("JPY=X",    "USD/JPY"),
+        ("CNY=X",    "USD/CNY"),
+        ("AUDUSD=X", "AUD/USD"),
+        ("CAD=X",    "USD/CAD"),
+        ("CHF=X",    "USD/CHF"),
+        ("INR=X",    "USD/INR"),
+        ("MXN=X",    "USD/MXN"),
+        ("BRL=X",    "USD/BRL"),
+    ],
+    "commodities": [
+        ("GC=F",  "Gold"),
+        ("SI=F",  "Silver"),
+        ("PL=F",  "Platinum"),
+        ("CL=F",  "WTI Crude"),
+        ("BZ=F",  "Brent Crude"),
+        ("NG=F",  "Natural Gas"),
+        ("HG=F",  "Copper"),
+        ("ZW=F",  "Wheat"),
+        ("ZC=F",  "Corn"),
+        ("ZS=F",  "Soybeans"),
+    ],
+    "crypto": [
+        ("BTC-USD", "Bitcoin"),
+        ("ETH-USD", "Ethereum"),
+        ("SOL-USD", "Solana"),
+        ("XRP-USD", "XRP"),
+        ("BNB-USD", "BNB"),
+    ],
+    "rates": [
+        ("^IRX", "13W T-Bill"),
+        ("^FVX", "5Y Treasury"),
+        ("^TNX", "10Y Treasury"),
+        ("^TYX", "30Y Treasury"),
+    ],
+    "shipping": [
+        ("BDRY", "Dry Bulk ETF"),
+        ("SBLK", "Star Bulk Carriers"),
+        ("ZIM",  "ZIM Integrated Shipping"),
+        ("MATX", "Matson Inc"),
+        ("NMM",  "Navios Maritime"),
+    ],
+}
+
+
+def _fetch_single_ficc(symbol: str, name: str) -> dict[str, Any] | None:
+    try:
+        instrument = yf.Ticker(symbol)
+        history = instrument.history(period="1mo", interval="1d")
+        closes = history.get("Close")
+        if closes is None or getattr(closes, "empty", True):
+            return None
+        last = _last_series_value(closes)
+        prev = _previous_series_value(closes)
+        change_pct = None
+        if last is not None and prev not in (None, 0):
+            change_pct = round(((last - prev) / prev) * 100, 4)
+        return {
+            "symbol": symbol,
+            "name": name,
+            "price": last,
+            "change_pct": change_pct,
+            "history": [
+                {"date": idx.date().isoformat(), "close": round(float(v), 4)}
+                for idx, v in closes.tail(30).items()
+                if not math.isnan(float(v))
+            ],
+        }
+    except Exception:
+        return None
+
+
+def fetch_ficc_overview() -> dict[str, Any]:
+    """Fetch all FICC asset classes concurrently: global equities, forex, commodities, crypto, rates, shipping."""
+    all_tasks: list[tuple[str, str, str]] = [
+        (category, symbol, name)
+        for category, pairs in _FICC_CATEGORY_SYMBOLS.items()
+        for symbol, name in pairs
+    ]
+
+    results: dict[str, list] = {cat: [] for cat in _FICC_CATEGORY_SYMBOLS}
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        futures = {
+            pool.submit(_fetch_single_ficc, sym, name): (cat, sym)
+            for cat, sym, name in all_tasks
+        }
+        for fut in as_completed(futures):
+            cat, _sym = futures[fut]
+            try:
+                data = fut.result()
+                if data:
+                    results[cat].append(data)
+            except Exception:
+                pass
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        **results,
     }
 
 

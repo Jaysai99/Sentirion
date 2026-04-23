@@ -1,10 +1,13 @@
 beautifulsoup4
 fastapi
+feedparser
 lxml
+ntscraper
 pandas
 requests
 sec-edgar-downloader
 torch
 transformers
+tweepy
 uvicorn
 yfinance

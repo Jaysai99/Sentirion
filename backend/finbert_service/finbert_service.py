@@ -1,57 +1,85 @@
 print("FILE IS EXECUTING")
 
+import os
 from flask import Flask, request, jsonify
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
 
 app = Flask(__name__)
 
-tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
-model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
-labels = {int(index): str(label).lower() for index, label in model.config.id2label.items()}
-positive_index = next(index for index, label in labels.items() if label == "positive")
-negative_index = next(index for index, label in labels.items() if label == "negative")
+# Choose device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Running on: {device}")
+
+# MODEL NAME (this is the correct one)
+MODEL_NAME = "yiyanghkust/finbert-tone"
+
+# Load tokenizer and model with HF token
+tokenizer = AutoTokenizer.from_pretrained(
+    MODEL_NAME,
+    use_auth_token=os.environ.get("HF_TOKEN")
+)
+
+model = AutoModelForSequenceClassification.from_pretrained(
+    MODEL_NAME,
+    use_auth_token=os.environ.get("HF_TOKEN")
+).to(device)
+model.eval()
+
+# FinBERT-Tone label mapping from model.config.id2label
+# Should be: {0: "neutral", 1: "positive", 2: "negative"}
+id2label = model.config.id2label
+
 
 @app.route("/finbert", methods=["POST"])
 def finbert_sentiment():
     data = request.json
-    texts = data["texts"]
+    texts = data.get("texts", [])
 
-    scores = []
+    if not texts:
+        return jsonify({"error": "No texts provided"}), 400
+
+    results = []
 
     for text in texts:
-        inputs = tokenizer(
+        encoded = tokenizer(
             text,
             return_tensors="pt",
             truncation=True,
             padding=True,
-            max_length=256,
-        )
+            max_length=256
+        ).to(device)
 
         with torch.no_grad():
-            outputs = model(**inputs)
-            probs = torch.softmax(outputs.logits, dim=1)[0].numpy()
+            logits = model(**encoded).logits
+            probs = torch.softmax(logits, dim=1)[0].cpu().numpy()
 
-        positive = probs[positive_index]
-        negative = probs[negative_index]
+        neutral, positive, negative = probs
 
-        # Sentiment score: +1 positive, -1 negative
-        weighted_score = float(positive - negative)
-        scores.append(weighted_score)
+        # sentiment score: positive - negative
+        score = float(positive - negative)
 
-    avg_score = sum(scores) / len(scores)
+        # classify by thresholds
+        if score > 0.25:
+            label = "positive"
+        elif score < -0.25:
+            label = "negative"
+        else:
+            label = "neutral"
 
-    if avg_score > 0.25:
-        label = "positive"
-    elif avg_score < -0.25:
-        label = "negative"
-    else:
-        label = "neutral"
+        results.append({
+            "text": text,
+            "score": score,
+            "label": label,
+            "raw_probabilities": {
+                "neutral": float(neutral),
+                "positive": float(positive),
+                "negative": float(negative)
+            }
+        })
 
-    return jsonify({
-        "score": avg_score,
-        "label": label
-    })
+    return jsonify(results)
+
 
 if __name__ == "__main__":
     print("SERVER STARTING...")

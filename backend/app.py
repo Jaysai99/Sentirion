@@ -1,5 +1,7 @@
 import logging
 import os
+import threading
+from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
@@ -7,8 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 try:
     from .dashboard_data import build_market_overview, build_sentiment_dashboard
+    from .financial_data import fetch_ficc_overview
 except ImportError:
     from dashboard_data import build_market_overview, build_sentiment_dashboard
+    from financial_data import fetch_ficc_overview
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -26,11 +30,28 @@ PORT = int(os.getenv("PORT", "3001"))
 _raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
 ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
+
+# ── Startup: pre-warm FinBERT so first request is fast ───────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    def _warm():
+        try:
+            from market_sentiment import load_finbert
+            load_finbert()
+            logger.info("FinBERT model loaded and ready.")
+        except Exception as exc:
+            logger.warning("FinBERT pre-warm failed: %s", exc)
+
+    threading.Thread(target=_warm, daemon=True).start()
+    yield
+
+
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Sentirion API",
     description="Institutional-grade market sentiment intelligence.",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -57,7 +78,7 @@ def sentiment(
     result = build_sentiment_dashboard(ticker, reddit_time_range=reddit_time_range)
 
     if result["documents_analyzed"] == 0:
-        raise HTTPException(status_code=404, detail="No Reddit or SEC documents found.")
+        raise HTTPException(status_code=404, detail="No documents found for that query.")
 
     if not include_documents:
         result.pop("documents", None)
@@ -71,6 +92,13 @@ def market_overview(
 ):
     logger.info("market-overview request time_range=%s", reddit_time_range)
     return build_market_overview(reddit_time_range=reddit_time_range)
+
+
+@app.get("/api/ficc")
+def ficc_overview():
+    """Global FICC data: equities, forex, commodities, crypto, rates, shipping."""
+    logger.info("ficc request")
+    return fetch_ficc_overview()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,9 @@
 import argparse
 import json
+import logging
 import re
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -12,12 +14,12 @@ import requests
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-try:
-    from .sec_ingestion import fetch_sec_filings
-    from .text_cleaner import clean_social_text, extract_sec_sections
-except ImportError:
-    from sec_ingestion import fetch_sec_filings
-    from text_cleaner import clean_social_text, extract_sec_sections
+from news_ingestion import fetch_news_documents
+from sec_ingestion import fetch_sec_filings
+from text_cleaner import clean_social_text, extract_sec_sections
+from twitter_ingestion import fetch_twitter_documents
+
+logger = logging.getLogger(__name__)
 
 MODEL_NAME = "ProsusAI/finbert"
 BASE_DIR = Path(__file__).resolve().parent
@@ -35,16 +37,6 @@ MIN_COMMENT_RELEVANCE = 5
 MAX_POSTS_PER_SUBREDDIT = 2
 REDDIT_SORT_MODES = ("relevance", "new", "top")
 VALID_REDDIT_TIME_RANGES = {"day", "week", "month", "year"}
-SUBREDDIT_QUALITY_WEIGHTS = {
-    "aapl": 4,
-    "investing": 3,
-    "stocks": 3,
-    "valueinvesting": 3,
-    "securityanalysis": 3,
-    "stockmarket": 2,
-    "options": 2,
-    "wallstreetbets": 1,
-}
 FINANCE_SUBREDDITS = {
     "aapl",
     "algotrading",
@@ -152,13 +144,12 @@ def mentions_ticker(text: str, ticker: str) -> bool:
     pattern = re.compile(rf"(?<![A-Za-z0-9])\$?{re.escape(ticker)}(?![A-Za-z0-9])", re.IGNORECASE)
     return bool(pattern.search(text))
 
-
 def fetch_reddit_documents(
     ticker: str,
     post_limit: int = REDDIT_POST_LIMIT,
     comments_per_post: int = REDDIT_COMMENTS_PER_POST,
     time_range: str = "week",
-    sort_modes: Sequence[str] | None = None,
+    sort_modes: tuple = REDDIT_SORT_MODES,
     max_query_variants: int | None = None,
 ) -> list[SourceDocument]:
     session = requests.Session()
@@ -174,13 +165,13 @@ def fetch_reddit_documents(
     candidate_limit = min(max(post_limit * REDDIT_CANDIDATE_MULTIPLIER, 25), 100)
     candidate_posts: dict[str, tuple[int, dict[str, Any]]] = {}
     normalized_time_range = _normalize_reddit_time_range(time_range)
-    active_sort_modes = tuple(sort_modes) if sort_modes else REDDIT_SORT_MODES
+
     query_variants = _build_reddit_query_variants(ticker)
     if max_query_variants is not None:
         query_variants = query_variants[:max_query_variants]
 
     for query_variant in query_variants:
-        for sort_mode in active_sort_modes:
+        for sort_mode in sort_modes:
             try:
                 response = session.get(
                     REDDIT_SEARCH_URL,
@@ -243,7 +234,6 @@ def fetch_reddit_documents(
                     "url": f"https://www.reddit.com{permalink}" if permalink else None,
                     "created_at": _format_reddit_timestamp(data.get("created_utc")),
                     "score": data.get("score"),
-                    "comment_count": data.get("num_comments"),
                     "relevance_score": relevance_score,
                     "search_sort": data.get("sentirion_search_sort"),
                 },
@@ -261,7 +251,6 @@ def fetch_reddit_documents(
                 ticker=ticker,
                 subreddit=str(data.get("subreddit", "")),
                 parent_relevance_score=relevance_score,
-                comment_score=comment.get("score"),
             )
             if comment_relevance < MIN_COMMENT_RELEVANCE:
                 continue
@@ -286,7 +275,6 @@ def fetch_reddit_documents(
                         "url": f"https://www.reddit.com{comment_permalink}" if comment_permalink else None,
                         "created_at": _format_reddit_timestamp(comment.get("created_utc")),
                         "score": comment.get("score"),
-                        "comment_count": 0,
                         "matched_via": "ticker" if comment_mentions_ticker else "parent_post_context",
                         "parent_post_id": post_id,
                         "relevance_score": comment_relevance,
@@ -310,7 +298,6 @@ def build_sec_documents(
     filing_paths = fetch_sec_filings(
         ticker,
         download_folder=str(sec_data_dir),
-        limit=2,
         download_if_missing=True,
     )
 
@@ -327,18 +314,29 @@ def build_sec_documents(
             )
 
             for index, section in enumerate(sections, start=1):
+                # extract_sec_sections returns dicts with text/section_heading/section_theme
+                if isinstance(section, dict):
+                    section_text = section.get("text", "")
+                    section_heading = section.get("section_heading")
+                    section_theme = section.get("section_theme")
+                else:
+                    section_text = str(section)
+                    section_heading = None
+                    section_theme = None
+                if not section_text:
+                    continue
                 documents.append(
                     SourceDocument(
                         ticker=ticker,
                         source="sec",
                         document_type=filing_type,
-                        text=section["text"],
-                        snippet=trim_snippet(section["text"]),
+                        text=section_text,
+                        snippet=trim_snippet(section_text),
                         metadata={
                             "path": file_path,
                             "section_index": index,
-                            "section_heading": section.get("section_heading"),
-                            "section_theme": section.get("section_theme"),
+                            "section_heading": section_heading,
+                            "section_theme": section_theme,
                             **filing_metadata,
                         },
                     )
@@ -360,7 +358,8 @@ def score_documents(documents: Sequence[SourceDocument], batch_size: int = 8) ->
     negative_index = _find_label_index(id2label, "negative")
 
     for batch in _batched(documents, batch_size):
-        texts = [document.text for document in batch]
+        # Coerce to non-empty strings; tokenizer rejects None/empty
+        texts = [str(d.text or " ").strip() or " " for d in batch]
         encoded = tokenizer(
             texts,
             return_tensors="pt",
@@ -449,23 +448,63 @@ def run_sentiment_pipeline(
     reddit_comments_per_post: int = REDDIT_COMMENTS_PER_POST,
     sec_sections_per_filing: int = SEC_SECTIONS_PER_FILING,
     reddit_time_range: str = "week",
+    news_limit: int = 30,
+    twitter_limit: int = 25,
 ) -> dict[str, Any]:
+    """
+    Fetch documents from Reddit, SEC, News, and Twitter concurrently,
+    then score all documents with FinBERT and aggregate into a payload.
+    """
     normalized_ticker = ticker.upper().strip()
     query_kind = "ticker" if _looks_like_ticker(normalized_ticker) else "topic"
-    reddit_documents = fetch_reddit_documents(
-        normalized_ticker,
-        post_limit=reddit_post_limit,
-        comments_per_post=reddit_comments_per_post,
-        time_range=reddit_time_range,
-    )
-    sec_documents = build_sec_documents(
-        normalized_ticker,
-        sec_data_dir=sec_data_dir,
-        refresh=refresh_sec,
-        sections_per_filing=sec_sections_per_filing,
+
+    # ── Concurrent multi-source fetch ─────────────────────────────────────────
+    source_raw_docs: dict[str, list] = {}
+
+    def _reddit():
+        return fetch_reddit_documents(
+            normalized_ticker,
+            post_limit=reddit_post_limit,
+            comments_per_post=reddit_comments_per_post,
+            time_range=reddit_time_range,
+        )
+
+    def _sec():
+        return build_sec_documents(
+            normalized_ticker,
+            sec_data_dir=sec_data_dir,
+            refresh=refresh_sec,
+            sections_per_filing=sec_sections_per_filing,
+        )
+
+    def _news():
+        raw = fetch_news_documents(normalized_ticker, limit=news_limit)
+        return _convert_raw_docs(normalized_ticker, raw)
+
+    def _twitter():
+        raw = fetch_twitter_documents(normalized_ticker, limit=twitter_limit)
+        return _convert_raw_docs(normalized_ticker, raw)
+
+    tasks = {"reddit": _reddit, "sec": _sec, "news": _news, "twitter": _twitter}
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {pool.submit(fn): name for name, fn in tasks.items()}
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                source_raw_docs[name] = future.result()
+            except Exception as exc:
+                logger.warning("Source %s failed: %s", name, exc)
+                source_raw_docs[name] = []
+
+    all_raw = (
+        source_raw_docs.get("reddit", [])
+        + source_raw_docs.get("sec", [])
+        + source_raw_docs.get("news", [])
+        + source_raw_docs.get("twitter", [])
     )
 
-    scored_documents = score_documents(reddit_documents + sec_documents)
+    scored_documents = score_documents(all_raw)
     payload = aggregate_sentiment(
         normalized_ticker,
         scored_documents,
@@ -477,6 +516,25 @@ def run_sentiment_pipeline(
         payload.pop("documents", None)
 
     return payload
+
+
+def _convert_raw_docs(ticker: str, raw_docs: list[dict[str, Any]]) -> list[SourceDocument]:
+    """Convert plain dicts (from news/twitter) to SourceDocument instances."""
+    result: list[SourceDocument] = []
+    for doc in raw_docs:
+        text    = doc.get("text", "").strip()
+        snippet = doc.get("snippet", text)[:300]
+        if not text:
+            continue
+        result.append(SourceDocument(
+            ticker=ticker,
+            source=doc.get("source", "unknown"),
+            document_type=doc.get("document_type", "article"),
+            text=text,
+            snippet=snippet,
+            metadata=doc.get("metadata", {}),
+        ))
+    return result
 
 
 def main() -> None:
@@ -718,8 +776,6 @@ def _score_reddit_post(data: dict[str, Any], ticker: str) -> int:
 
     score = 0
     finance_hits = _count_finance_hits(combined)
-    post_score = _safe_int(data.get("score"))
-    comment_count = _safe_int(data.get("num_comments"))
 
     if title_mentions:
         score += 5
@@ -729,14 +785,10 @@ def _score_reddit_post(data: dict[str, Any], ticker: str) -> int:
         score += 2
     if subreddit in FINANCE_SUBREDDITS or subreddit == ticker.lower():
         score += 2
-    score += SUBREDDIT_QUALITY_WEIGHTS.get(subreddit, 0)
     if finance_hits:
         score += min(finance_hits, 4)
-    score += _engagement_points(post_score, comment_count)
     if finance_hits == 0 and subreddit not in FINANCE_SUBREDDITS and subreddit != ticker.lower():
         score -= 4
-    if post_score <= 0 and comment_count <= 1:
-        score -= 3
     if _is_promotional_content(title, body, subreddit):
         score -= 10
 
@@ -748,12 +800,10 @@ def _score_reddit_comment(
     ticker: str,
     subreddit: str,
     parent_relevance_score: int,
-    comment_score: Any = None,
 ) -> int:
     normalized_subreddit = subreddit.lower()
     finance_hits = _count_finance_hits(comment_text)
     direct_match = mentions_ticker(comment_text, ticker)
-    numeric_comment_score = _safe_int(comment_score)
 
     score = 0
     if direct_match:
@@ -764,7 +814,6 @@ def _score_reddit_comment(
         score += min(finance_hits, 3)
     if normalized_subreddit in FINANCE_SUBREDDITS or normalized_subreddit == ticker.lower():
         score += 1
-    score += min(max(numeric_comment_score // 10, 0), 2)
     if parent_relevance_score >= 8:
         score += 1
     if not direct_match and finance_hits < 2:
@@ -782,26 +831,6 @@ def _count_finance_hits(text: str) -> int:
 
 def _contains_cashtag(text: str, ticker: str) -> bool:
     return bool(re.search(rf"(?<![A-Za-z0-9])\\${re.escape(ticker)}(?![A-Za-z0-9])", text, re.IGNORECASE))
-
-
-def _engagement_points(post_score: int, comment_count: int) -> int:
-    points = 0
-    if post_score >= 25:
-        points += 1
-    if post_score >= 100:
-        points += 2
-    if comment_count >= 10:
-        points += 1
-    if comment_count >= 50:
-        points += 2
-    return points
-
-
-def _safe_int(value: Any) -> int:
-    try:
-        return int(value or 0)
-    except (TypeError, ValueError):
-        return 0
 
 
 def _is_promotional_content(title: str, body: str, subreddit: str) -> bool:

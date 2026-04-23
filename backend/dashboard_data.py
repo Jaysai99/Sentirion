@@ -7,10 +7,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 try:
-    from .financial_data import fetch_index_overview, fetch_stock_snapshot, looks_like_ticker
+    from .financial_data import fetch_analyst_data, fetch_earnings_calendar, fetch_index_overview, fetch_stock_snapshot, looks_like_ticker
     from .market_sentiment import fetch_reddit_documents, run_sentiment_pipeline, score_documents
 except ImportError:
-    from financial_data import fetch_index_overview, fetch_stock_snapshot, looks_like_ticker
+    from financial_data import fetch_analyst_data, fetch_earnings_calendar, fetch_index_overview, fetch_stock_snapshot, looks_like_ticker
     from market_sentiment import fetch_reddit_documents, run_sentiment_pipeline, score_documents
 
 MARKET_WATCHLIST = ("AAPL", "MSFT", "NVDA", "GOOGL", "META", "AMZN", "TSLA", "JPM", "GS", "XOM")
@@ -107,6 +107,8 @@ def build_market_overview(reddit_time_range: str = "day") -> dict[str, Any]:
 
 
 def build_sentiment_dashboard(query: str, reddit_time_range: str = "week") -> dict[str, Any]:
+    is_ticker = looks_like_ticker(query)
+
     base_payload = run_sentiment_pipeline(
         query,
         include_documents=True,
@@ -114,99 +116,101 @@ def build_sentiment_dashboard(query: str, reddit_time_range: str = "week") -> di
         reddit_post_limit=18,
         reddit_comments_per_post=3,
         sec_sections_per_filing=4,
+        news_limit=30,
+        twitter_limit=25,
     )
     documents = base_payload.get("documents", [])
-    stock = fetch_stock_snapshot(query) if looks_like_ticker(query) else None
-    sentiment_timeline = _build_sentiment_timeline(documents, reddit_time_range)
-    source_analytics = _build_source_analytics(documents)
-    coverage = _build_coverage(base_payload, documents)
-    momentum = _build_momentum(sentiment_timeline)
+
+    stock           = fetch_stock_snapshot(query) if is_ticker else None
+    analyst_data    = fetch_analyst_data(query) if is_ticker else None
+    earnings_cal    = fetch_earnings_calendar(query) if is_ticker else None
+
+    sentiment_timeline    = _build_sentiment_timeline(documents, reddit_time_range)
+    source_analytics      = _build_source_analytics(documents)
+    coverage              = _build_coverage(base_payload, documents)
+    momentum              = _build_momentum(sentiment_timeline)
     historical_positioning = _build_historical_positioning(sentiment_timeline, base_payload.get("score", 0))
-    signal_quality = _build_signal_quality(coverage, source_analytics, sentiment_timeline)
-    divergence_signal = _build_divergence_signal(source_analytics, base_payload.get("query_kind", "topic"))
-    sec_intelligence = _build_sec_intelligence(documents)
-    live_stream = _build_live_stream(documents, momentum)
-    key_drivers = _build_key_drivers(documents)[:3]
-    catalysts = _build_catalysts(
-        base_payload,
-        stock,
-        key_drivers,
-        divergence_signal,
-        sec_intelligence,
-        momentum,
-    )
-    alerts = _build_alerts(
-        base_payload,
-        signal_quality,
-        divergence_signal,
-        live_stream,
-        momentum,
-    )
-    summary = _build_narrative_summary(
-        base_payload,
-        signal_quality,
-        divergence_signal,
-        catalysts,
-        momentum,
-        stock,
-        key_drivers,
-    )
-    actionable_interpretation = _build_actionable_interpretation(
-        base_payload,
-        signal_quality,
-        divergence_signal,
-        momentum,
-    )
+    signal_quality        = _build_signal_quality(coverage, source_analytics, sentiment_timeline)
+    divergence_signal     = _build_divergence_signal(source_analytics, base_payload.get("query_kind", "topic"))
+    sec_intelligence      = _build_sec_intelligence(documents)
+    live_stream           = _build_live_stream(documents, momentum)
+    news_stream           = _build_news_stream(documents)
+    twitter_stream        = _build_twitter_stream(documents)
+    key_drivers           = _build_key_drivers(documents)[:3]
+    source_breakdown      = _build_source_breakdown(documents)
+
+    catalysts = _build_catalysts(base_payload, stock, key_drivers, divergence_signal, sec_intelligence, momentum)
+    alerts    = _build_alerts(base_payload, signal_quality, divergence_signal, live_stream, momentum)
+    summary   = _build_narrative_summary(base_payload, signal_quality, divergence_signal, catalysts, momentum, stock, key_drivers)
+    actionable_interpretation = _build_actionable_interpretation(base_payload, signal_quality, divergence_signal, momentum)
 
     return {
         **base_payload,
         "score_display": base_payload.get("score") if signal_quality["sufficient_coverage"] else None,
-        "coverage": coverage,
-        "signal_quality": signal_quality,
-        "momentum": momentum,
+        "coverage":              coverage,
+        "signal_quality":        signal_quality,
+        "momentum":              momentum,
         "historical_positioning": historical_positioning,
-        "divergence_signal": divergence_signal,
-        "stock_data": stock,
-        "sentiment_timeline": sentiment_timeline,
-        "sentiment_volatility": _compute_volatility(documents),
-        "key_drivers": key_drivers,
-        "top_drivers": key_drivers,
-        "source_analytics": source_analytics,
-        "live_stream": live_stream,
-        "filings_intelligence": sec_intelligence,
-        "catalysts": catalysts,
+        "divergence_signal":     divergence_signal,
+        "stock_data":            stock,
+        "analyst_data":          analyst_data,
+        "earnings_calendar":     earnings_cal,
+        "sentiment_timeline":    sentiment_timeline,
+        "sentiment_volatility":  _compute_volatility(documents),
+        "key_drivers":           key_drivers,
+        "top_drivers":           key_drivers,
+        "source_analytics":      source_analytics,
+        "source_breakdown":      source_breakdown,
+        "live_stream":           live_stream,
+        "news_stream":           news_stream,
+        "twitter_stream":        twitter_stream,
+        "filings_intelligence":  sec_intelligence,
+        "catalysts":             catalysts,
         "signal_analytics": {
-            "mention_volume": live_stream["mention_volume"],
+            "mention_volume":    live_stream["mention_volume"],
             "volume_change_pct": live_stream["volume_change_pct"],
-            "rate_of_change": live_stream["rate_of_change"],
-            "dispersion": source_analytics["dispersion"],
-            "alerts": alerts,
+            "rate_of_change":    live_stream["rate_of_change"],
+            "dispersion":        source_analytics["dispersion"],
+            "alerts":            alerts,
         },
-        "summary_panel": summary,
+        "summary_panel":   summary,
         "narrative_engine": {
-            "summary": summary,
+            "summary":                   summary,
             "actionable_interpretation": actionable_interpretation,
-            "catalysts": catalysts,
+            "catalysts":                 catalysts,
         },
     }
 
 
 def _build_coverage(base_payload: dict[str, Any], documents: list[dict[str, Any]]) -> dict[str, Any]:
     source_counts = base_payload.get("sources", {})
-    reddit_docs = source_counts.get("reddit", 0)
-    sec_docs = source_counts.get("sec", 0)
-    source_count = len([source for source, count in source_counts.items() if count > 0])
+    reddit_docs  = source_counts.get("reddit", 0)
+    sec_docs     = source_counts.get("sec", 0)
+    news_docs    = source_counts.get("news", 0)
+    twitter_docs = source_counts.get("twitter", 0)
+    source_count = len([s for s, c in source_counts.items() if c > 0])
+
+    parts = []
+    if reddit_docs:
+        parts.append(f"{reddit_docs} Reddit")
+    if news_docs:
+        parts.append(f"{news_docs} News")
+    if twitter_docs:
+        parts.append(f"{twitter_docs} Twitter")
+    if sec_docs:
+        parts.append(f"{sec_docs} SEC")
+    label = f"{base_payload.get('documents_analyzed', 0)} docs — {', '.join(parts)}" if parts else "No documents"
 
     return {
-        "documents_analyzed": base_payload.get("documents_analyzed", 0),
-        "reddit_mentions": reddit_docs,
-        "sec_passages": sec_docs,
-        "sources_used": source_count,
-        "coverage_label": (
-            f"Analyzed {base_payload.get('documents_analyzed', 0)} documents across {source_count} sources"
-        ),
+        "documents_analyzed":  base_payload.get("documents_analyzed", 0),
+        "reddit_mentions":     reddit_docs,
+        "sec_passages":        sec_docs,
+        "news_articles":       news_docs,
+        "twitter_mentions":    twitter_docs,
+        "sources_used":        source_count,
+        "coverage_label":      label,
         "institutional_threshold": {
-            "documents": MIN_CONFIDENT_DOCUMENTS,
+            "documents":       MIN_CONFIDENT_DOCUMENTS,
             "reddit_mentions": MIN_CONFIDENT_REDDIT_DOCUMENTS,
         },
     }
@@ -365,6 +369,75 @@ def _build_divergence_signal(source_analytics: dict[str, Any], query_kind: str) 
         "classification": classification,
         "spread": spread,
         "message": message,
+    }
+
+
+def _build_source_breakdown(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Count documents and average sentiment per source for the breakdown panel."""
+    by_source: dict[str, list[float]] = defaultdict(list)
+    for doc in documents:
+        source = doc.get("source", "unknown")
+        score  = doc.get("sentiment_score", 0.0)
+        by_source[source].append(score)
+
+    breakdown = []
+    for source, scores in by_source.items():
+        breakdown.append({
+            "source": source,
+            "count":  len(scores),
+            "avg_sentiment": round(sum(scores) / len(scores), 3) if scores else 0.0,
+        })
+    return sorted(breakdown, key=lambda x: x["count"], reverse=True)
+
+
+def _build_news_stream(documents: list[dict[str, Any]]) -> dict[str, Any]:
+    """Structured news feed from the scored documents list."""
+    news_docs = [
+        doc for doc in documents
+        if doc.get("source") == "news"
+    ]
+    news_docs_sorted = sorted(
+        news_docs,
+        key=lambda d: d.get("metadata", {}).get("published_at") or "",
+        reverse=True,
+    )
+
+    avg_score = (
+        round(sum(d.get("sentiment_score", 0) for d in news_docs_sorted) / len(news_docs_sorted), 3)
+        if news_docs_sorted else 0.0
+    )
+
+    return {
+        "count": len(news_docs_sorted),
+        "avg_sentiment": avg_score,
+        "items": news_docs_sorted[:20],
+    }
+
+
+def _build_twitter_stream(documents: list[dict[str, Any]]) -> dict[str, Any]:
+    """Structured Twitter feed sorted by engagement then recency."""
+    twitter_docs = [
+        doc for doc in documents
+        if doc.get("source") == "twitter"
+    ]
+
+    def _sort_key(doc: dict[str, Any]) -> tuple:
+        meta       = doc.get("metadata", {})
+        engagement = meta.get("engagement", 0) or 0
+        created    = meta.get("created_at") or ""
+        return (engagement, created)
+
+    twitter_docs_sorted = sorted(twitter_docs, key=_sort_key, reverse=True)
+
+    avg_score = (
+        round(sum(d.get("sentiment_score", 0) for d in twitter_docs_sorted) / len(twitter_docs_sorted), 3)
+        if twitter_docs_sorted else 0.0
+    )
+
+    return {
+        "count":         len(twitter_docs_sorted),
+        "avg_sentiment": avg_score,
+        "items":         twitter_docs_sorted[:20],
     }
 
 

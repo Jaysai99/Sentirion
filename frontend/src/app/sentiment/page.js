@@ -1,6 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  LineChart as RLineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  ReferenceLine,
+  BarChart as RBarChart,
+  Bar,
+  Cell,
+} from "recharts";
 
 const DEFAULT_QUERY = "AAPL";
 const SAMPLE_QUERIES = ["AAPL", "NVDA", "MSFT", "JPM", "semiconductors", "AI infrastructure"];
@@ -569,6 +582,30 @@ export default function SentimentPage() {
           </Panel>
         </section>
 
+        <section className="grid gap-5 xl:grid-cols-2">
+          <Panel title="News Feed" eyebrow="Financial News">
+            <NewsPanel items={result?.news_stream?.items || []} avgSentiment={result?.news_stream?.avg_sentiment} count={result?.news_stream?.count} />
+          </Panel>
+          <Panel title="Twitter / X" eyebrow="Social Pulse">
+            <TwitterPanel items={result?.twitter_stream?.items || []} avgSentiment={result?.twitter_stream?.avg_sentiment} count={result?.twitter_stream?.count} />
+          </Panel>
+        </section>
+
+        {(result?.analyst_data || result?.earnings_calendar) && (
+          <section className="grid gap-5 xl:grid-cols-2">
+            {result?.analyst_data && (
+              <Panel title="Analyst Coverage" eyebrow="Street View">
+                <AnalystPanel data={result.analyst_data} currentPrice={result?.stock_data?.price} />
+              </Panel>
+            )}
+            {result?.earnings_calendar && (
+              <Panel title="Earnings & Fundamentals" eyebrow="Company Metrics">
+                <EarningsPanel data={result.earnings_calendar} />
+              </Panel>
+            )}
+          </section>
+        )}
+
         <section className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
           <Panel title="Global Market Overview" eyebrow="Market Context">
             {overviewError ? <ErrorStrip message={overviewError} /> : null}
@@ -716,31 +753,35 @@ export default function SentimentPage() {
             </div>
           </Panel>
 
-          <Panel title="Raw Stream" eyebrow="Lower Priority Data">
+          <Panel title="Document Stream" eyebrow="All Sources">
             <div className="flex flex-wrap gap-2">
-              {["all", "reddit", "sec"].map((source) => (
+              {[
+                { key: "all",     label: "All Sources" },
+                { key: "reddit",  label: "Reddit" },
+                { key: "news",    label: "News" },
+                { key: "twitter", label: "Twitter / X" },
+                { key: "sec",     label: "SEC" },
+              ].map(({ key, label }) => (
                 <button
-                  key={source}
+                  key={key}
                   type="button"
-                  onClick={() => setActiveSource(source)}
+                  onClick={() => setActiveSource(key)}
                   className={`rounded-full px-4 py-2 text-sm transition ${
-                    activeSource === source
+                    activeSource === key
                       ? "bg-[#b8f36b] text-[#09110f]"
                       : "border border-white/10 bg-white/5 text-[#ced8d1] hover:border-[#b8f36b]/30 hover:bg-[#b8f36b]/10"
                   }`}
                 >
-                  {source === "all" ? "All Sources" : formatSourceLabel(source)}
+                  {label}
                 </button>
               ))}
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <MiniMetric label="Mentions" value={result?.signal_analytics?.mention_volume || 0} />
-              <MiniMetric
-                label="Volume Surge"
-                value={formatPercent(result?.signal_analytics?.volume_change_pct)}
-              />
-              <MiniMetric label="Dispersion" value={result?.signal_analytics?.dispersion ?? "--"} />
+            <div className="mt-4 grid gap-3 sm:grid-cols-4">
+              <MiniMetric label="Total Docs" value={result?.coverage?.documents_analyzed ?? "--"} />
+              <MiniMetric label="Reddit" value={result?.coverage?.reddit_mentions ?? "--"} />
+              <MiniMetric label="News" value={result?.coverage?.news_articles ?? "--"} />
+              <MiniMetric label="Twitter" value={result?.coverage?.twitter_mentions ?? "--"} />
             </div>
 
             <div className="mt-5 space-y-3">
@@ -768,10 +809,22 @@ export default function SentimentPage() {
                             ? document.metadata?.subreddit
                               ? `r/${document.metadata.subreddit}`
                               : "Public discussion"
+                            : document.source === "news"
+                            ? document.metadata?.publisher || document.source_name || "News"
+                            : document.source === "twitter"
+                            ? `@${document.metadata?.username || "user"}`
                             : formatDate(document.metadata?.filed_at)}
                         </span>
+                        {document.source === "news" && document.metadata?.published_at && (
+                          <span className="text-xs text-[#7f9288]">{formatDate(document.metadata.published_at)}</span>
+                        )}
                       </div>
                       <p className="max-w-4xl text-sm leading-7 text-[#ecf1ec]">{document.snippet}</p>
+                      {(document.source === "news" || document.source === "twitter") && document.metadata?.url && (
+                        <a href={document.metadata.url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block font-mono text-[10px] text-[#7fd0ff] hover:underline">
+                          Read →
+                        </a>
+                      )}
                     </div>
                     <div className="min-w-[132px] rounded-[20px] border border-white/8 bg-black/20 px-4 py-3 xl:text-right">
                       <div className={`text-2xl font-semibold tracking-[-0.05em] ${getTone(document.sentiment_score).accent}`}>
@@ -880,51 +933,93 @@ function MiniLineChart({ points, valueKey, stroke }) {
 
 function LineChart({ points, valueKey, labelKey, stroke }) {
   if (!points?.length) return <div className="h-48 rounded-[18px] bg-white/[0.04]" />;
-
-  const values = points.map((point) => point[valueKey]).filter((value) => typeof value === "number");
+  const values = points.map((p) => p[valueKey]).filter((v) => typeof v === "number");
   if (!values.length) return <div className="h-48 rounded-[18px] bg-white/[0.04]" />;
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const path = values
-    .map((value, index) => {
-      const x = (index / Math.max(values.length - 1, 1)) * 580;
-      const y = max === min ? 90 : 180 - ((value - min) / (max - min)) * 150;
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
-    .join(" ");
-
-  const firstLabel = points[0]?.[labelKey];
-  const lastLabel = points[points.length - 1]?.[labelKey];
-
   return (
-    <div>
-      <svg viewBox="0 0 580 190" className="h-48 w-full">
-        <path d={path} fill="none" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
-      </svg>
-      <div className="mt-2 flex items-center justify-between text-xs text-[#7d8f87]">
-        <span>{firstLabel}</span>
-        <span>{lastLabel}</span>
-      </div>
-    </div>
+    <ResponsiveContainer width="100%" height={192}>
+      <RLineChart data={points} margin={{ top: 4, right: 8, left: -24, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+        <XAxis
+          dataKey={labelKey}
+          tick={{ fill: "#70827a", fontSize: 10, fontFamily: "var(--font-ibm-plex-mono)" }}
+          tickFormatter={(v) => String(v || "").slice(0, 10)}
+          interval="preserveStartEnd"
+          axisLine={false}
+          tickLine={false}
+        />
+        <YAxis
+          tick={{ fill: "#70827a", fontSize: 10, fontFamily: "var(--font-ibm-plex-mono)" }}
+          domain={["auto", "auto"]}
+          axisLine={false}
+          tickLine={false}
+          tickFormatter={(v) => (typeof v === "number" ? v.toFixed(2) : v)}
+          width={48}
+        />
+        <Tooltip
+          contentStyle={{
+            background: "#0b1714",
+            border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: "12px",
+            padding: "8px 12px",
+          }}
+          labelStyle={{ color: "#9aaba3", fontSize: 11, fontFamily: "var(--font-ibm-plex-mono)" }}
+          itemStyle={{ color: stroke, fontFamily: "var(--font-ibm-plex-mono)" }}
+          formatter={(v) => [typeof v === "number" ? v.toFixed(4) : v]}
+        />
+        {valueKey === "score" && (
+          <ReferenceLine y={0} stroke="rgba(255,255,255,0.15)" strokeDasharray="4 4" />
+        )}
+        <Line
+          type="monotone"
+          dataKey={valueKey}
+          stroke={stroke}
+          strokeWidth={2.5}
+          dot={false}
+          activeDot={{ r: 5, fill: stroke, stroke: "#0b1714", strokeWidth: 2 }}
+        />
+      </RLineChart>
+    </ResponsiveContainer>
   );
 }
 
 function Histogram({ buckets }) {
-  const maxCount = Math.max(...(buckets.map((bucket) => bucket.count) || [1]), 1);
-
+  if (!buckets?.length) return null;
   return (
-    <div className="flex items-end gap-3">
-      {buckets.map((bucket) => (
-        <div key={bucket.label} className="flex flex-1 flex-col items-center gap-2">
-          <div
-            className="w-full rounded-t-[12px] bg-gradient-to-t from-[#b8f36b] to-[#ffbf69]"
-            style={{ height: `${Math.max((bucket.count / maxCount) * 120, 8)}px` }}
-          />
-          <div className="text-center text-[11px] text-[#82938b]">{bucket.label}</div>
-        </div>
-      ))}
-    </div>
+    <ResponsiveContainer width="100%" height={140}>
+      <RBarChart data={buckets} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+        <XAxis
+          dataKey="label"
+          tick={{ fill: "#70827a", fontSize: 9, fontFamily: "var(--font-ibm-plex-mono)" }}
+          axisLine={false}
+          tickLine={false}
+        />
+        <YAxis
+          tick={{ fill: "#70827a", fontSize: 10 }}
+          axisLine={false}
+          tickLine={false}
+          width={28}
+        />
+        <Tooltip
+          contentStyle={{
+            background: "#0b1714",
+            border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: "12px",
+            padding: "8px 12px",
+          }}
+          cursor={{ fill: "rgba(255,255,255,0.04)" }}
+          labelStyle={{ color: "#9aaba3", fontSize: 11 }}
+        />
+        <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+          {buckets.map((bucket, i) => {
+            const mid = i / Math.max(buckets.length - 1, 1);
+            const fill = mid < 0.33 ? "#ff7d6b" : mid > 0.66 ? "#b8f36b" : "#ffbf69";
+            return <Cell key={bucket.label} fill={fill} fillOpacity={0.8} />;
+          })}
+        </Bar>
+      </RBarChart>
+    </ResponsiveContainer>
   );
 }
 
@@ -971,6 +1066,256 @@ function Heatmap({ entries }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function NewsPanel({ items, avgSentiment, count }) {
+  if (!items?.length) {
+    return (
+      <div className="rounded-[22px] border border-white/8 bg-[#0b1714] p-5 text-sm text-[#8fa199]">
+        News articles load after running a ticker query.
+      </div>
+    );
+  }
+  const tone = avgSentiment != null ? getTone(avgSentiment) : null;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#70827a]">
+          {count ?? items.length} articles
+        </span>
+        {tone && (
+          <span className={`font-mono text-sm font-semibold ${tone.accent}`}>
+            Avg {formatScore(avgSentiment)}
+          </span>
+        )}
+      </div>
+      <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+        {items.map((item, i) => {
+          const meta = item.metadata || {};
+          const t = getTone(item.sentiment_score ?? 0);
+          return (
+            <div key={i} className="rounded-[18px] border border-white/8 bg-[#0b1714] p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-[#9eb0a7]">
+                      {meta.publisher || item.source_name || "News"}
+                    </span>
+                    {meta.published_at && (
+                      <span className="text-[11px] text-[#70827a]">{formatDate(meta.published_at)}</span>
+                    )}
+                  </div>
+                  <p className="text-sm leading-6 text-[#ecf1ec] line-clamp-2">
+                    {meta.title || item.snippet}
+                  </p>
+                  {meta.url && (
+                    <a href={meta.url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block font-mono text-[10px] text-[#7fd0ff] hover:underline">
+                      Read →
+                    </a>
+                  )}
+                </div>
+                <div className={`shrink-0 font-mono text-base font-semibold ${t.accent}`}>
+                  {formatScore(item.sentiment_score)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TwitterPanel({ items, avgSentiment, count }) {
+  if (!items?.length) {
+    return (
+      <div className="rounded-[22px] border border-white/8 bg-[#0b1714] p-5 text-sm text-[#8fa199]">
+        Twitter / X data requires either TWITTER_BEARER_TOKEN (API v2) or ntscraper availability.
+      </div>
+    );
+  }
+  const tone = avgSentiment != null ? getTone(avgSentiment) : null;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#70827a]">
+          {count ?? items.length} tweets
+        </span>
+        {tone && (
+          <span className={`font-mono text-sm font-semibold ${tone.accent}`}>
+            Avg {formatScore(avgSentiment)}
+          </span>
+        )}
+      </div>
+      <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+        {items.map((item, i) => {
+          const meta = item.metadata || {};
+          const t = getTone(item.sentiment_score ?? 0);
+          return (
+            <div key={i} className={`rounded-[18px] border p-3 ${meta.quality_account ? "border-[#7fd0ff]/20 bg-[#7fd0ff]/5" : "border-white/8 bg-[#0b1714]"}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                    <span className="font-mono text-[11px] text-[#7fd0ff]">
+                      @{meta.username || "user"}
+                    </span>
+                    {meta.verified && <span className="text-[10px] text-[#7fd0ff]">✓</span>}
+                    {meta.quality_account && (
+                      <span className="rounded-full border border-[#7fd0ff]/20 px-1.5 py-0.5 font-mono text-[9px] text-[#7fd0ff]">Notable</span>
+                    )}
+                    {meta.created_at && (
+                      <span className="text-[11px] text-[#70827a]">{formatDate(meta.created_at)}</span>
+                    )}
+                  </div>
+                  <p className="text-sm leading-6 text-[#ecf1ec]">{item.snippet}</p>
+                  <div className="mt-1 flex gap-3 font-mono text-[10px] text-[#70827a]">
+                    {meta.likes != null && <span>♡ {meta.likes.toLocaleString()}</span>}
+                    {meta.retweets != null && <span>↺ {meta.retweets.toLocaleString()}</span>}
+                    {meta.url && (
+                      <a href={meta.url} target="_blank" rel="noopener noreferrer" className="text-[#7fd0ff] hover:underline">View →</a>
+                    )}
+                  </div>
+                </div>
+                <div className={`shrink-0 font-mono text-base font-semibold ${t.accent}`}>
+                  {formatScore(item.sentiment_score)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AnalystPanel({ data, currentPrice }) {
+  if (!data) return null;
+  const targets  = data.price_targets || {};
+  const upgrades = data.recent_upgrades || [];
+  const rec      = data.recommendation;
+
+  const recColor =
+    rec === "buy" || rec === "strong_buy" ? "text-[#b8f36b]" :
+    rec === "sell" || rec === "strong_sell" ? "text-[#ff7d6b]" :
+    "text-[#ffbf69]";
+
+  const upside = targets.mean && currentPrice
+    ? (((targets.mean - currentPrice) / currentPrice) * 100).toFixed(1)
+    : null;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-[16px] border border-white/8 bg-[#0b1714] p-3">
+          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#70827a]">Consensus</div>
+          <div className={`mt-1.5 text-base font-semibold uppercase ${recColor}`}>
+            {rec ? rec.replace("_", " ") : "--"}
+          </div>
+        </div>
+        <div className="rounded-[16px] border border-white/8 bg-[#0b1714] p-3">
+          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#70827a]">Price Target</div>
+          <div className="mt-1.5 text-base font-semibold text-[#f4f0e8]">
+            {targets.mean ? `$${targets.mean}` : "--"}
+          </div>
+        </div>
+        <div className="rounded-[16px] border border-white/8 bg-[#0b1714] p-3">
+          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#70827a]">Upside</div>
+          <div className={`mt-1.5 text-base font-semibold ${upside != null ? (parseFloat(upside) > 0 ? "text-[#b8f36b]" : "text-[#ff7d6b]") : "text-[#93a49c]"}`}>
+            {upside != null ? `${upside > 0 ? "+" : ""}${upside}%` : "--"}
+          </div>
+        </div>
+        <div className="rounded-[16px] border border-white/8 bg-[#0b1714] p-3">
+          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#70827a]">Analysts</div>
+          <div className="mt-1.5 text-base font-semibold text-[#f4f0e8]">
+            {data.num_analysts ?? targets.number_of_analysts ?? "--"}
+          </div>
+        </div>
+      </div>
+
+      {(targets.low || targets.high) && (
+        <div className="rounded-[20px] border border-white/8 bg-[#0b1714] px-4 py-3">
+          <div className="mb-2 flex justify-between font-mono text-[10px] text-[#70827a]">
+            <span>Low ${targets.low}</span>
+            <span>Target Range</span>
+            <span>High ${targets.high}</span>
+          </div>
+          {targets.low && targets.high && targets.mean && (
+            <div className="relative h-2 rounded-full bg-white/8">
+              <div
+                className="absolute left-0 top-0 h-2 rounded-full bg-gradient-to-r from-[#ff7d6b] via-[#ffbf69] to-[#b8f36b]"
+                style={{ width: `${Math.min(((targets.mean - targets.low) / (targets.high - targets.low)) * 100, 100)}%` }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {upgrades.length > 0 && (
+        <div className="space-y-2">
+          <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#70827a]">Recent Rating Changes</div>
+          {upgrades.slice(0, 6).map((u, i) => {
+            const isUp = u.action?.toLowerCase().includes("up") || u.to_grade?.toLowerCase().includes("buy");
+            const color = isUp ? "text-[#b8f36b]" : u.action?.toLowerCase().includes("down") ? "text-[#ff7d6b]" : "text-[#ffbf69]";
+            return (
+              <div key={i} className="flex items-center justify-between rounded-[14px] border border-white/8 bg-[#0b1714] px-3 py-2">
+                <div>
+                  <span className="text-sm text-[#f4f0e8]">{u.firm}</span>
+                  <span className="ml-2 text-xs text-[#70827a]">{u.date}</span>
+                </div>
+                <div className={`text-right text-sm font-semibold ${color}`}>
+                  {u.from_grade && u.to_grade ? `${u.from_grade} → ${u.to_grade}` : u.to_grade || u.action}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EarningsPanel({ data }) {
+  if (!data) return null;
+
+  const fmtPct = (v) => v != null ? `${(v * 100).toFixed(1)}%` : "--";
+  const fmtVal = (v) => v != null ? (Math.abs(v) >= 1e9 ? `$${(v/1e9).toFixed(2)}B` : `$${(v/1e6).toFixed(0)}M`) : "--";
+
+  const metrics = [
+    { label: "EPS (TTM)",        value: data.eps_trailing_12m != null ? `$${data.eps_trailing_12m}` : "--" },
+    { label: "EPS (Fwd)",        value: data.eps_forward != null ? `$${data.eps_forward}` : "--" },
+    { label: "Rev Growth YoY",   value: fmtPct(data.revenue_growth_yoy) },
+    { label: "EPS Growth YoY",   value: fmtPct(data.earnings_growth_yoy) },
+    { label: "Profit Margin",    value: fmtPct(data.profit_margins) },
+    { label: "Operating Margin", value: fmtPct(data.operating_margins) },
+    { label: "ROE",              value: fmtPct(data.return_on_equity) },
+    { label: "ROA",              value: fmtPct(data.return_on_assets) },
+    { label: "D/E Ratio",        value: data.debt_to_equity != null ? data.debt_to_equity.toFixed(2) : "--" },
+    { label: "Free Cash Flow",   value: fmtVal(data.free_cashflow) },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {data.next_earnings && (
+        <div className="rounded-[20px] border border-[#ffbf69]/20 bg-[#ffbf69]/5 p-4">
+          <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#ffbf69]">Next Earnings</div>
+          <div className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[#f4f0e8]">
+            {data.next_earnings.date}
+          </div>
+          {data.next_earnings.eps_estimate != null && (
+            <div className="mt-1 text-sm text-[#b9c5bf]">EPS Est. ${data.next_earnings.eps_estimate}</div>
+          )}
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {metrics.map(({ label, value }) => (
+          <div key={label} className="rounded-[14px] border border-white/8 bg-[#0b1714] p-3">
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#70827a]">{label}</div>
+            <div className="mt-1 text-sm font-semibold text-[#f4f0e8]">{value}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1154,40 +1499,40 @@ function FinancialSnapshot({ data }) {
 
 function BarChart({ series, color }) {
   if (!series?.length) return null;
-
-  const values = series.map((s) => s.value);
-  const maxAbs = Math.max(...values.map((v) => Math.abs(v)), 1);
-  const BAR_HEIGHT = 80;
-
+  const data = series.map((s) => ({ ...s, label: s.period_end?.slice(0, 7) ?? "" }));
   return (
-    <div className="flex items-end gap-1.5" style={{ height: `${BAR_HEIGHT + 40}px` }}>
-      {series.map((point, i) => {
-        const ratio = Math.abs(point.value) / maxAbs;
-        const height = Math.max(ratio * BAR_HEIGHT, 4);
-        const isNeg = point.value < 0;
-        const barColor = isNeg ? "#ff7d6b" : color;
-        const label = point.period_end?.slice(0, 7) ?? "";
-
-        return (
-          <div
-            key={i}
-            className="flex flex-1 flex-col items-center gap-1"
-            style={{ height: `${BAR_HEIGHT + 40}px`, justifyContent: "flex-end" }}
-          >
-            <div className="font-mono text-[9px] text-[#70827a]">{formatCompactNumber(point.value)}</div>
-            <div
-              style={{
-                height: `${height}px`,
-                backgroundColor: barColor,
-                opacity: 0.75,
-                width: "100%",
-                borderRadius: "3px 3px 0 0",
-              }}
-            />
-            <div className="font-mono text-[9px] text-[#70827a] text-center leading-tight">{label}</div>
-          </div>
-        );
-      })}
-    </div>
+    <ResponsiveContainer width="100%" height={120}>
+      <RBarChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+        <XAxis
+          dataKey="label"
+          tick={{ fill: "#70827a", fontSize: 9, fontFamily: "var(--font-ibm-plex-mono)" }}
+          axisLine={false}
+          tickLine={false}
+        />
+        <YAxis
+          tick={{ fill: "#70827a", fontSize: 9 }}
+          axisLine={false}
+          tickLine={false}
+          width={44}
+          tickFormatter={(v) => formatCompactNumber(v)}
+        />
+        <Tooltip
+          contentStyle={{
+            background: "#0b1714",
+            border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: "12px",
+            padding: "8px 12px",
+          }}
+          cursor={{ fill: "rgba(255,255,255,0.04)" }}
+          formatter={(v) => [formatCompactNumber(v)]}
+        />
+        <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+          {data.map((point, i) => (
+            <Cell key={i} fill={point.value < 0 ? "#ff7d6b" : color} fillOpacity={0.82} />
+          ))}
+        </Bar>
+      </RBarChart>
+    </ResponsiveContainer>
   );
 }
