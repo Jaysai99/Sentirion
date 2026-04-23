@@ -4,7 +4,7 @@ import threading
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 try:
@@ -27,8 +27,14 @@ logger = logging.getLogger("sentirion")
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "3001"))
 
-_raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
-ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+# In production (Railway/Docker) default to allowing all origins so the
+# frontend domain doesn't need to be hard-coded.  Set ALLOWED_ORIGINS to
+# a comma-separated list to restrict in more locked-down deployments.
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
+if _raw_origins.strip() == "*":
+    ALLOWED_ORIGINS = ["*"]
+else:
+    ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
 
 # ── Startup: pre-warm FinBERT so first request is fast ───────────────────────
@@ -36,7 +42,10 @@ ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 async def lifespan(app: FastAPI):
     def _warm():
         try:
-            from market_sentiment import load_finbert
+            try:
+                from .market_sentiment import load_finbert
+            except ImportError:
+                from market_sentiment import load_finbert
             load_finbert()
             logger.info("FinBERT model loaded and ready.")
         except Exception as exc:
@@ -57,7 +66,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=ALLOWED_ORIGINS != ["*"],
     allow_methods=["GET"],
     allow_headers=["*"],
 )
@@ -76,9 +85,6 @@ def sentiment(
 ):
     logger.info("sentiment request ticker=%s time_range=%s", ticker, reddit_time_range)
     result = build_sentiment_dashboard(ticker, reddit_time_range=reddit_time_range)
-
-    if result["documents_analyzed"] == 0:
-        raise HTTPException(status_code=404, detail="No documents found for that query.")
 
     if not include_documents:
         result.pop("documents", None)

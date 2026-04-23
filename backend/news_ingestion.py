@@ -150,9 +150,29 @@ def _fetch_yfinance_news(query: str, limit: int = 20) -> list[dict[str, Any]]:
         return []
 
 
+_TOPIC_EXPANSIONS: dict[str, list[str]] = {
+    "semiconductor": ["semiconductor", "chip", "nvidia", "amd", "intel", "tsmc", "foundry", "wafer"],
+    "semiconductors": ["semiconductor", "chip", "nvidia", "amd", "intel", "tsmc", "foundry"],
+    "ai": ["artificial intelligence", "ai ", " ai", "machine learning", "llm", "openai", "anthropic"],
+    "ai infrastructure": ["ai infrastructure", "data center", "gpu", "nvidia", "hyperscaler"],
+    "energy": ["energy", "oil", "natural gas", "crude", "petroleum", "lng", "exxon", "chevron"],
+    "banking": ["banking", "bank", "jpmorgan", "goldman", "morgan stanley", "wells fargo", "interest rate"],
+    "crypto": ["crypto", "bitcoin", "ethereum", "blockchain", "digital asset", "defi"],
+    "real estate": ["real estate", "reit", "housing", "mortgage", "property"],
+    "healthcare": ["healthcare", "pharma", "biotech", "fda", "drug", "clinical trial"],
+}
+
+
 def _fetch_rss_news(query: str, limit: int = 30) -> list[dict[str, Any]]:
     """Search all RSS feeds for entries mentioning *query*."""
-    query_terms = {query.lower(), f"${query.upper()}", query.upper()}
+    q_lower = query.lower().strip()
+    query_terms: set[str] = {q_lower, f"${query.upper()}", query.upper()}
+
+    # Add expanded synonyms for known topic keywords
+    for key, expansions in _TOPIC_EXPANSIONS.items():
+        if key in q_lower or q_lower in key:
+            query_terms.update(t.lower() for t in expansions)
+
     documents: list[dict[str, Any]] = []
 
     for name, url in NEWS_RSS_FEEDS.items():
@@ -163,7 +183,7 @@ def _fetch_rss_news(query: str, limit: int = 30) -> list[dict[str, Any]]:
                 summary = getattr(entry, "summary", "")
                 combined = f"{title} {summary}".lower()
 
-                if not any(t.lower() in combined for t in query_terms):
+                if not any(t in combined for t in query_terms):
                     continue
 
                 documents.append(_make_news_doc(

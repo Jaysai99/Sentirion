@@ -1,6 +1,8 @@
 import argparse
 import json
 import logging
+import os
+import random
 import re
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -36,6 +38,13 @@ MIN_POST_RELEVANCE = 6
 MIN_COMMENT_RELEVANCE = 5
 MAX_POSTS_PER_SUBREDDIT = 2
 REDDIT_SORT_MODES = ("relevance", "new", "top")
+DISABLE_REDDIT = os.getenv("DISABLE_REDDIT", "").lower() in ("1", "true", "yes")
+
+_REDDIT_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+]
 VALID_REDDIT_TIME_RANGES = {"day", "week", "month", "year"}
 FINANCE_SUBREDDITS = {
     "aapl",
@@ -152,11 +161,18 @@ def fetch_reddit_documents(
     sort_modes: tuple = REDDIT_SORT_MODES,
     max_query_variants: int | None = None,
 ) -> list[SourceDocument]:
+    if DISABLE_REDDIT:
+        return []
+
     session = requests.Session()
     session.headers.update(
         {
-            "User-Agent": "Sentirion/1.0 (market sentiment research; contact: sentirion@example.com)",
-            "Accept": "application/json",
+            "User-Agent": random.choice(_REDDIT_USER_AGENTS),
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
         }
     )
 
@@ -186,7 +202,7 @@ def fetch_reddit_documents(
                 )
                 response.raise_for_status()
             except requests.RequestException as exc:
-                print(f"Error fetching Reddit posts for {ticker}: {exc}")
+                logger.warning("Reddit fetch blocked/failed for %s: %s", ticker, exc)
                 continue
 
             for child in response.json().get("data", {}).get("children", []):
